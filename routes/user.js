@@ -1,17 +1,13 @@
 const express = require('express');
-const { getAllUsers, getUser, updateUser, deleteUser, registerUser, registerUserIp, deleteUserIp } = require('./../controllers/UserController');
+const { getAllUsers, getUser, deleteUser, registerUser, registerUserIp, deleteUserIp } = require('./../controllers/UserController');
 const { validateKey, validateUser } = require('../middlewares/validations/apiKeys');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
-    res.status(404).json({ msg: 'No key provided. Register for one at /api/user/register'});
-});
 router.get('/register/:username', registerUser); // This is for testing purposes [DEBUGGING PURPOSE]
 router.post('/register/:username', registerUser);
 router.get('/:apikey', validateKey, getAllUsers);
-// router.get('/:id', getUser);
-router.put('/:apikey', updateUser);
+router.get('/', validateKey, getUser);
 router.delete('/:apikey', validateKey, deleteUser);
 
 router.get('/ip/add', (req, res) => {

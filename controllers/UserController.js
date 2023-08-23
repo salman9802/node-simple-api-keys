@@ -1,82 +1,65 @@
-const fs = require('fs');
-const path = require('path');
 
-const UserModel = require('../models/UserModel');
-// const users = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'users.json')).toString());
+const asyncHandler = require('express-async-handler');
+const User = require('../models/UserModel');
 
-const getAllUsers = async(req, res) => {
-    try {
-        const users = await UserModel.findAll();
-        if(users.length) res.status(200).json({ ok: true, users});
-        else res.status().json({ ok: true, msg: 'No users present', users});
-    } catch (error) {
-        res.status(500).json({ error });
-    }
-};
+const getAllUsers = asyncHandler(async(req, res) => {
+        const users = await User.find();
+        if(users.length) {
+            users.forEach(user => user.apiKey = user.ips = undefined);
+            res.status(200).json({ ok: true, users});
+        }
+        else res.status(404).json({ ok: true, msg: 'No users present', users});
+});
 
-const getUser = async(req, res) => {
-    try {
-        const user = await UserModel.find(req.params.id);
-        if(user) res.status(200).json(user);
-        else res.status(200).json({ msg: 'No user with given id'});
-    } catch (error) {
-        res.status(500).json({ error });
-    }
+const getUser = asyncHandler(async(req, res) => {
+    if(req.query.apikey){
+        const user = await User.find({apiKey: req.query.apikey});
+        if(user.length) res.status(200).json(user);
+        else res.status(200).json({ msg: 'No user with apikey'});
+    } else res.status(200).json({ msg: 'Please pass apikey as query parameter'});
 
-};
+});
 
-const updateUser = async(req, res) => {
+const deleteUser = asyncHandler(async(req, res) => {
+    const user = await User.deleteOne({apiKey: req.params.apikey});
+    if(user) res.status(201).json({ ok: true, msg: 'User deleted successfuly'});
+});
 
-};
-
-const deleteUser = async(req, res) => {
-    const user = await UserModel.delete(req.params.apikey).catch(error => {
-        res.status(500).json({error});
-    });
-    if(user) res.status(201).json({ ok: true, msg: 'User deleted successfuly', user});
-};
-
-const registerUser = async(req, res) => { 
+const registerUser = asyncHandler(async(req, res) => { 
     const userData = {
+        apiKey : [...Array(5)].map(e => parseInt(Math.random() * 9)).join(''),
         username: req.params.username,
         ips: [req.ip]
     };
-    const user = await UserModel.create(userData);
+    const user = await User.create(userData);
     res.status(201).json({ ok: true, msg: 'User created successfuly', user});
-};
+});
 
-const registerUserIp = async(req, res) => { 
+const registerUserIp = asyncHandler(async(req, res) => { 
     try {
-        const user = await UserModel.find(req.params.id);
-        if(user) {
-            if(!user.ips.includes(req.ip)) user.ips.push(req.ip);
-            await UserModel.update(user);
-            res.status(200).json({ok:true, msg: 'Ip added successfuly', user});
-        } else res.status(404).json({ msg: 'No user with given id'});
+        if(!req.user.ips.includes(req.ip)) req.user.ips.push(req.ip);
+        req.user.save();
+        res.status(200).json({ok:true, msg: 'Ip added successfuly', user: req.user});
     } catch (error) {
-        res.status(500).json({ error });
+        throw new Error(error);
     }
-};
+});
 
-const deleteUserIp = async(req, res) => { 
+const deleteUserIp = asyncHandler(async(req, res) => { 
     try {
-        const user = await UserModel.find(req.params.id);
-        if(user) {
-            const ipIndex = user.ips.indexOf(req.ip);
-            if(ipIndex !== -1) user.ips.splice(ipIndex, 1); // remove one value from ips from index of given ip
-            await UserModel.update(user);
-            res.status(200).json({ok:true, msg: 'Ip removed successfuly', user});
-        } else res.status(404).json({ msg: 'No user with given id'});
+        const ipIndex = req.user.ips.indexOf(req.ip);
+        if(ipIndex !== -1) req.user.ips.splice(ipIndex, 1); // remove one value from ips from index of given ip
+        req.user.save();
+        res.status(200).json({ok:true, msg: 'Ip removed successfuly', user: req.user});
     } catch (error) {
-        res.status(500).json({ error });
+        throw new Error(error);
     }
-};
+});
 
 
 module.exports = {
     getAllUsers,
     getUser,
-    updateUser,
     deleteUser,
     registerUser,
     registerUserIp,

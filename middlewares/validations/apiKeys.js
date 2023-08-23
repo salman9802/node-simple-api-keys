@@ -1,47 +1,43 @@
-const fs = require('fs');
-const path = require('path');
 
 const User = require('./../../models/UserModel');
-require('dotenv').config();
 
-const validateKey = (req, res, next) => {
+const validateKey = async(req, res, next) => {
     try {
-        const users = User.readData();
-        const userIndex = users.findIndex(user => user.apiKey == req.params.apikey);
-        // console.log(req.ip);
-        if(userIndex !== -1) 
-            if(users[userIndex].ips.includes(req.ip)) {
-                const currentDate = new Date().toISOString().split('T')[0];
-                const usageIndex = users[userIndex].usage.findIndex(usage => usage.date ===  currentDate);
-                if(usageIndex !== -1) {
-                    if(users[userIndex].usage[usageIndex].count < process.env.MAX_API_RATE_PER_DAY) {
-                        users[userIndex].usage[usageIndex].count++;
-                        // console.log(users); // [DEBUGGING PURPOSE]
-                        User.updateData(users);
-                        next();
+        const userExists = await User.findOne({apiKey: (req.params.apikey || req.query.apikey)});
+        if(userExists && userExists.ips.includes(req.ip)) {
+            const currentDate = new Date().toISOString().split('T')[0];
+            const usageIndex = userExists.usage.findIndex(u => u.date.toISOString().split('T')[0] == currentDate); // If used today
+            if(usageIndex !== -1){
+                if(userExists.usage[usageIndex].count < process.env.MAX_API_RATE_PER_DAY){
+                    if(req.params.apikey) {
+                        userExists.usage[usageIndex].count++;
+                        userExists.markModified('usage'); // to tell mongoose that usage of user was modified
+                        userExists.save();
                     }
-                    else res.status(429).json({ ok:false, msg: 'Max limit reached'});
-                } else {
-                    users[userIndex].usage.push({date: currentDate, count: 0});
-                    User.updateData(users);
                     next();
-                }
+                } else res.status(429).json({ ok:false, msg: 'Max limit reached'});
+            } else {
+                userExists.usage.push({date: new Date(), count: req.params.apikey ? 1 : 0}); // default value for date and count
+                userExists.save();
+                next();
             }
-            else res.status(403).json({ ok: false, msg: 'Unauthorized Access'});
-        else res.status(400).json({ ok: false, msg: 'Invalid key. Register for one at /api/user/register'});
-    } catch (error) {
-        res.status(500).json({ error });
+        } else res.status(403).json({ ok: false, msg: 'Unauthorized Access'});
+    } catch (err) {
+        res.status(500).json({ 
+        ok: false,
+        msg: err.message,
+        stack: process.env.NODE_ENV === 'development' ? err.stack.replace(/(\r\n|\n|\r)/gm, ':::').split(':::') : null // replace any form of line break to make an array for better readability from stack
+        });
     }
 };
 
-const validateUser = (req, res, next) => {
+const validateUser = async(req, res, next) => {
     try{
-        const users = User.readData();
-        const userIndex = users.findIndex(user => user._id == req.params.id && user.apiKey == req.params.apikey);
-        if(userIndex !== -1) next();
-        else {
-            res.status(400).json({ok: false, msg: 'Invalid id or key provided.'});
-        }
+        const user = await User.findOne({_id: req.params.id, apiKey: req.params.apikey});
+        if(user) {
+            req.user = user;
+            next();
+        } else res.status(404).json({ msg: 'No user with given id'});
     }catch(error){
         res.status(500).json({ ok: false, msg: 'Unable to process at the moment', error });
     }
@@ -50,4 +46,4 @@ const validateUser = (req, res, next) => {
 module.exports = {
     validateKey,
     validateUser
-}
+};
